@@ -7,12 +7,14 @@ interface VerificationEngineProps {
   question: Question;
   isAnswerVisible: boolean;
   onComplete: (success: boolean) => void | Promise<void>;
+  verificationMode: "char" | "submit";
 }
 
 export default function VerificationEngine({
   question,
   isAnswerVisible,
   onComplete,
+  verificationMode,
 }: VerificationEngineProps) {
   const { type, prompt, given, answer } = question;
 
@@ -22,20 +24,28 @@ export default function VerificationEngine({
   const [hasHadError, setHasHadError] = useState(false);
   const [isDone, setIsDone] = useState(false);
 
+  // Submit mode states
+  const [submitValue, setSubmitValue] = useState("");
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
+
   // Focus reference
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Reset state when question changes
+  // Reset state when question or mode changes
   useEffect(() => {
     setCurrentIndex(0);
     setErrorChar(null);
     setHasHadError(false);
     setIsDone(false);
+    setSubmitValue("");
+    setIsSubmitted(false);
+    setSubmitError(false);
     // Auto-focus on start
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 100);
-  }, [question]);
+  }, [question, verificationMode]);
 
   const handleInputChar = (typed: string) => {
     if (isDone || currentIndex >= answer.length) return;
@@ -102,6 +112,33 @@ export default function VerificationEngine({
   // Card click helper
   const handleContainerClick = () => {
     textareaRef.current?.focus();
+  };
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (isDone || isSubmitted) return;
+
+    // Trim trailing whitespace from both user's input and expected answer string
+    const userTrimmed = submitValue.replace(/\s+$/, "");
+    const expectedTrimmed = answer.replace(/\s+$/, "");
+    const isMatch = userTrimmed === expectedTrimmed;
+
+    if (isMatch) {
+      setIsDone(true);
+      setSubmitError(false);
+      setIsSubmitted(true);
+      // Wait 800ms before calling onComplete(true)
+      setTimeout(() => {
+        onComplete(true);
+      }, 800);
+    } else {
+      setSubmitError(true);
+      setIsSubmitted(true);
+    }
+  };
+
+  const handleNextAfterFail = () => {
+    onComplete(false);
   };
 
   // Build character render spans for the type/fix/output targets
@@ -202,6 +239,49 @@ export default function VerificationEngine({
     );
   };
 
+  const renderSubmitModeTextArea = (placeholder: string) => {
+    return (
+      <textarea
+        ref={textareaRef}
+        value={submitValue}
+        onChange={(e) => {
+          if (!isDone && !submitError) {
+            setSubmitValue(e.target.value);
+          }
+        }}
+        onPaste={(e) => {
+          e.preventDefault();
+        }}
+        onKeyDown={(e) => {
+          if (isDone || submitError) return;
+
+          if (e.key === "Tab") {
+            e.preventDefault();
+            const start = e.currentTarget.selectionStart;
+            const end = e.currentTarget.selectionEnd;
+            const newVal = submitValue.substring(0, start) + "    " + submitValue.substring(end);
+            setSubmitValue(newVal);
+            
+            const nextPos = start + 4;
+            setTimeout(() => {
+              if (textareaRef.current) {
+                textareaRef.current.selectionStart = textareaRef.current.selectionEnd = nextPos;
+              }
+            }, 0);
+          }
+        }}
+        disabled={isDone || submitError}
+        placeholder={placeholder}
+        className="w-full min-h-[140px] bg-slate-950 text-slate-100 font-mono text-lg leading-relaxed focus:outline-none focus:ring-0 select-text border-0"
+        autoFocus
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+      />
+    );
+  };
+
   return (
     <div
       onClick={handleContainerClick}
@@ -211,19 +291,24 @@ export default function VerificationEngine({
           : "border-slate-800 bg-slate-900/50 hover:border-slate-700 shadow-xl"
       }`}
     >
-      {/* Hidden capture engine */}
-      <textarea
-        ref={textareaRef}
-        onKeyDown={handleKeyDown}
-        value=""
-        onChange={() => {}}
-        className="absolute inset-0 h-0 w-0 opacity-0 pointer-events-none"
-        autoFocus
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-      />
+      {/* Hidden capture engine (only in char mode) */}
+      {verificationMode === "char" && (
+        <textarea
+          ref={textareaRef}
+          onKeyDown={handleKeyDown}
+          onPaste={(e) => {
+            e.preventDefault();
+          }}
+          value=""
+          onChange={() => {}}
+          className="absolute inset-0 h-0 w-0 opacity-0 pointer-events-none"
+          autoFocus
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      )}
 
       {/* Header Info */}
       <div className="flex items-start justify-between gap-4 mb-4">
@@ -258,59 +343,173 @@ export default function VerificationEngine({
 
       {/* Target display container depending on Mode */}
       <div className="mt-4">
-        {type === "type" && (
-          <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-lg leading-relaxed overflow-x-auto min-h-[85px] shadow-inner">
-            <pre className="whitespace-pre-wrap break-all leading-normal">
-              {renderCodeSegments(answer)}
-            </pre>
-          </div>
-        )}
-
-        {type === "fill" && renderFillMode()}
-
-        {type === "fix" && (
+        {verificationMode === "submit" ? (
           <div className="flex flex-col gap-4">
-            {/* Show original broken code */}
-            <div className="bg-rose-950/15 border border-rose-900/35 rounded-xl p-4 font-mono text-lg">
-              <div className="text-xs text-rose-400/90 mb-1.5 leading-none select-none font-sans flex items-center gap-1.5 uppercase font-bold tracking-wider">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                Broken reference code (fix this):
-              </div>
-              <pre className="text-rose-200/90 whitespace-pre overflow-x-auto leading-normal">
-                {given}
-              </pre>
-            </div>
-            {/* Typings */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-lg leading-relaxed overflow-x-auto min-h-[85px] shadow-inner">
-              <pre className="whitespace-pre-wrap break-all leading-normal">
-                {renderCodeSegments(answer)}
-              </pre>
-            </div>
-          </div>
-        )}
+            {/* Fill Mode context layout */}
+            {type === "fill" && given && (() => {
+              const parts = given.split("___");
+              const prefix = parts[0] || "";
+              const suffix = parts[1] || "";
+              return (
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-lg leading-relaxed text-slate-300 relative overflow-x-auto select-text">
+                  <span className="text-slate-500 select-none block mb-2 border-b border-slate-800/60 pb-1 text-[10px] uppercase font-bold tracking-wider">
+                    /* Complete the blank by submitting the value */
+                  </span>
+                  <pre className="whitespace-pre">
+                    {prefix}
+                    <span className="inline-flex bg-slate-900 border border-indigo-500/30 px-2.5 py-0.5 rounded text-indigo-400 font-bold mx-1 animate-pulse">
+                      [blank area]
+                    </span>
+                    {suffix}
+                  </pre>
+                </div>
+              );
+            })()}
 
-        {type === "output" && (
-          <div className="flex flex-col gap-4">
-            {/* Show snippet */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-lg">
-              <div className="text-xs text-slate-400 mb-1.5 leading-none select-none font-sans flex items-center gap-1.5 uppercase font-bold tracking-wider">
-                <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-                C Snippet code block:
+            {/* Fix Mode context layout */}
+            {type === "fix" && (
+              <div className="bg-rose-950/15 border border-rose-900/35 rounded-xl p-4 font-mono text-lg">
+                <div className="text-xs text-rose-400/90 mb-1.5 leading-none select-none font-sans flex items-center gap-1.5 uppercase font-bold tracking-wider">
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  Broken reference code (fix this):
+                </div>
+                <pre className="text-rose-200/90 whitespace-pre overflow-x-auto leading-normal">
+                  {given}
+                </pre>
               </div>
-              <pre className="text-indigo-400/95 whitespace-pre overflow-x-auto leading-normal">
-                {given}
-              </pre>
-            </div>
-            {/* Typing box */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-lg leading-relaxed overflow-x-auto min-h-[85px] shadow-inner">
+            )}
+
+            {/* Output Mode context layout */}
+            {type === "output" && (
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-lg">
+                <div className="text-xs text-slate-400 mb-1.5 leading-none select-none font-sans flex items-center gap-1.5 uppercase font-bold tracking-wider">
+                  <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                  C Snippet code block:
+                </div>
+                <pre className="text-indigo-400/95 whitespace-pre overflow-x-auto leading-normal">
+                  {given}
+                </pre>
+              </div>
+            )}
+
+            {/* The Muted reference Answer if Ghost Mode is active */}
+            {isAnswerVisible && (
+              <div className="bg-slate-950/40 border border-slate-900 rounded-xl p-4 font-mono text-slate-500/85 select-text">
+                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2 select-none">
+                  /* Ghost Reference (Muted - 40% Opacity) */
+                </div>
+                <pre className="whitespace-pre overflow-x-auto text-lg leading-relaxed opacity-40 select-text font-mono">
+                  {answer}
+                </pre>
+              </div>
+            )}
+
+            {/* Main free-text entry box */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-lg leading-relaxed relative shadow-inner">
               <div className="text-xs text-slate-500 mb-2 leading-none select-none font-sans uppercase font-bold tracking-wider">
-                Console Output answer:
+                {type === "output" ? "Console Output Answer:" : "Your Code Answer:"}
               </div>
-              <pre className="whitespace-pre-wrap break-all leading-normal">
-                {renderCodeSegments(answer)}
-              </pre>
+              {renderSubmitModeTextArea(
+                type === "fill"
+                  ? "Type the missing blank value..."
+                  : type === "fix"
+                  ? "Type the fixed reference block..."
+                  : type === "output"
+                  ? "Type the printed terminal output..."
+                  : "Type the complete exact snippet..."
+              )}
             </div>
+
+            {/* Correct answer visual comparison display */}
+            {submitError && (
+              <div className="p-5 bg-emerald-950/15 border border-emerald-900/35 rounded-xl space-y-2">
+                <div className="text-xs text-emerald-400 font-bold tracking-wider uppercase flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4" /> Correct answer:
+                </div>
+                <pre className="text-emerald-300 font-mono text-lg overflow-x-auto whitespace-pre leading-normal">
+                  {answer}
+                </pre>
+              </div>
+            )}
+
+            {/* Button logic */}
+            {!isSubmitted ? (
+              <button
+                type="button"
+                onClick={() => handleSubmit()}
+                className="w-full h-11 min-h-[44px] bg-indigo-650 hover:bg-indigo-600 active:bg-indigo-750 text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border border-indigo-500/20"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Submit Answer
+              </button>
+            ) : submitError ? (
+              <button
+                type="button"
+                onClick={handleNextAfterFail}
+                className="w-full h-11 min-h-[44px] bg-slate-800 hover:bg-slate-700 active:bg-slate-850 text-slate-100 font-bold text-sm rounded-xl transition-all shadow flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
+              >
+                Next Question
+              </button>
+            ) : null}
           </div>
+        ) : (
+          /* OTHERWISE CHAR-BY-CHAR LIVE VERIFICATION (CURRENT DEFAULT BEHAVIOR) */
+          <>
+            {type === "type" && (
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-lg leading-relaxed overflow-x-auto min-h-[85px] shadow-inner">
+                <pre className="whitespace-pre-wrap break-all leading-normal">
+                  {renderCodeSegments(answer)}
+                </pre>
+              </div>
+            )}
+
+            {type === "fill" && renderFillMode()}
+
+            {type === "fix" && (
+              <div className="flex flex-col gap-4">
+                {/* Show original broken code */}
+                <div className="bg-rose-950/15 border border-rose-900/35 rounded-xl p-4 font-mono text-lg">
+                  <div className="text-xs text-rose-400/90 mb-1.5 leading-none select-none font-sans flex items-center gap-1.5 uppercase font-bold tracking-wider">
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    Broken reference code (fix this):
+                  </div>
+                  <pre className="text-rose-200/90 whitespace-pre overflow-x-auto leading-normal">
+                    {given}
+                  </pre>
+                </div>
+                {/* Typings */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-lg leading-relaxed overflow-x-auto min-h-[85px] shadow-inner">
+                  <pre className="whitespace-pre-wrap break-all leading-normal">
+                    {renderCodeSegments(answer)}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {type === "output" && (
+              <div className="flex flex-col gap-4">
+                {/* Show snippet */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-lg">
+                  <div className="text-xs text-slate-400 mb-1.5 leading-none select-none font-sans flex items-center gap-1.5 uppercase font-bold tracking-wider">
+                    <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                    C Snippet code block:
+                  </div>
+                  <pre className="text-indigo-400/95 whitespace-pre overflow-x-auto leading-normal">
+                    {given}
+                  </pre>
+                </div>
+                {/* Typing box */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-lg leading-relaxed overflow-x-auto min-h-[85px] shadow-inner">
+                  <div className="text-xs text-slate-500 mb-2 leading-none select-none font-sans uppercase font-bold tracking-wider">
+                    Console Output answer:
+                  </div>
+                  <pre className="whitespace-pre-wrap break-all leading-normal">
+                    {renderCodeSegments(answer)}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -318,9 +517,11 @@ export default function VerificationEngine({
       <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-slate-500 text-[10px] font-mono">
         <span className="flex items-center gap-1.5 grayscale opacity-75">
           <Keyboard className="w-3.5 h-3.5 text-indigo-400" />
-          Click container to focus keyboard. [Tab] key inserts 4 spaces.
+          {verificationMode === "submit"
+            ? "Free-text input area. [Tab] key inserts 4 spaces. Paste is completely disabled."
+            : "Click container to focus keyboard. [Tab] key inserts 4 spaces."}
         </span>
-        {hasHadError && (
+        {verificationMode === "char" && hasHadError && (
           <span className="text-rose-400 animate-pulse font-bold uppercase tracking-wider">
             Typo committed! Retype correctly to clear.
           </span>

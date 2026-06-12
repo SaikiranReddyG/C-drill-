@@ -33,6 +33,7 @@ export default function App() {
   const [activeFormat, setActiveFormat] = useState<QuestionFormat>("type");
   const [isShuffleOn, setIsShuffleOn] = useState(false);
   const [isGhostOn, setIsGhostOn] = useState(true);
+  const [verificationMode, setVerificationMode] = useState<"char" | "submit">("char");
 
   // Global consolidated Questions cache loaded from storage on startup
   // Key: "topicId:subCategoryId:format" -> Question[]
@@ -129,6 +130,7 @@ export default function App() {
     setIsCycleComplete(false);
     setDrillStats({ correctAnswers: 0, incorrectAnswers: 0, totalAnswered: 0 });
     setIsGhostOn(true);
+    setVerificationMode("char");
     setCurrentScreen("drill");
   };
 
@@ -704,6 +706,19 @@ export default function App() {
                       </button>
                       <button
                         onClick={() => {
+                          setVerificationMode(verificationMode === "char" ? "submit" : "char");
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all font-sans font-medium text-xs cursor-pointer ${
+                          verificationMode === "submit"
+                            ? "bg-slate-800 text-indigo-400 font-bold border border-indigo-500/10"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${verificationMode === "submit" ? "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]" : "bg-slate-500"}`} />
+                        Mode: {verificationMode === "char" ? "Char" : "Submit"}
+                      </button>
+                      <button
+                        onClick={() => {
                           setIsShuffleOn(!isShuffleOn);
                           resetDrillCycle();
                         }}
@@ -865,6 +880,7 @@ export default function App() {
                         question={drillQuestions[currentDrillIndex]}
                         isAnswerVisible={getIsAnswerVisible(drillQuestions[currentDrillIndex])}
                         onComplete={handleQuestionComplete}
+                        verificationMode={verificationMode}
                       />
 
                       {/* Micro stats overview card below focus area */}
