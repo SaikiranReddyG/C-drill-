@@ -56,5 +56,43 @@ export const persistentStorage = {
       console.error("Failed to save to storage", e);
       localStorage.setItem(key, JSON.stringify(questions));
     }
+  },
+
+  async getNote(key: string): Promise<string> {
+    try {
+      const win = window as any;
+      if (win.storage) {
+        if (typeof win.storage.get === 'function') {
+          const res = await win.storage.get(key);
+          return typeof res === 'string' ? res : (res ? String(res) : "");
+        } else if (typeof win.storage.getItem === 'function') {
+          const res = await win.storage.getItem(key);
+          return res || "";
+        }
+      }
+      return localStorage.getItem(key) || "";
+    } catch (e) {
+      console.warn("Could not load note from storage", e);
+      return "";
+    }
+  },
+
+  async saveNote(key: string, value: string): Promise<void> {
+    try {
+      const win = window as any;
+      if (win.storage) {
+        if (typeof win.storage.set === 'function') {
+          await win.storage.set(key, value);
+          return;
+        } else if (typeof win.storage.setItem === 'function') {
+          await win.storage.setItem(key, value);
+          return;
+        }
+      }
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.error("Failed to save note to storage", e);
+      localStorage.setItem(key, value);
+    }
   }
 };

@@ -4,6 +4,7 @@ import { Question, QuestionFormat, Topic, SubCategory } from "./types";
 import { persistentStorage } from "./storage";
 import VerificationEngine from "./components/VerificationEngine";
 import PasteZone from "./components/PasteZone";
+import NotesPanel from "./components/NotesPanel";
 import {
   GraduationCap,
   Terminal,
@@ -606,6 +607,9 @@ export default function App() {
                     );
                   })}
                 </div>
+
+                {/* Topic level notes panel */}
+                <NotesPanel storageKey={`notes:${activeTopic.id}`} />
               </div>
             )}
 
@@ -920,6 +924,9 @@ export default function App() {
                           </strong>
                         </div>
                       </div>
+
+                      {/* Unit level sub-category notes panel */}
+                      <NotesPanel storageKey={`notes:${activeTopic.id}:${activeSubCategory.id}`} />
                     </div>
                   )}
                 </div>
