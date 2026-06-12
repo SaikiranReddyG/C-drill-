@@ -32,6 +32,7 @@ export default function App() {
   const [activeSubCategory, setActiveSubCategory] = useState<SubCategory | null>(null);
   const [activeFormat, setActiveFormat] = useState<QuestionFormat>("type");
   const [isShuffleOn, setIsShuffleOn] = useState(false);
+  const [isGhostOn, setIsGhostOn] = useState(true);
 
   // Global consolidated Questions cache loaded from storage on startup
   // Key: "topicId:subCategoryId:format" -> Question[]
@@ -127,6 +128,7 @@ export default function App() {
     setCurrentDrillIndex(0);
     setIsCycleComplete(false);
     setDrillStats({ correctAnswers: 0, incorrectAnswers: 0, totalAnswered: 0 });
+    setIsGhostOn(true);
     setCurrentScreen("drill");
   };
 
@@ -348,6 +350,7 @@ export default function App() {
 
   // Retrieve current visibility state for progressive feedback
   const getIsAnswerVisible = (q: Question) => {
+    if (!isGhostOn) return false; // Ghost is OFF -> always hidden
     if (!q.seen) return true; // unseen
     if (q.lastResult === "fail") return true; // fallback to training wheels on failure
     return false; // passed on Hidden before, retains recall hidden mode!
@@ -686,8 +689,19 @@ export default function App() {
                       </h2>
                     </div>
 
-                    {/* Shuffle controller trigger */}
+                    {/* Ghost and Shuffle controller triggers */}
                     <div className="flex items-center gap-2 font-mono text-xs bg-slate-950 p-1 rounded-xl border border-slate-800">
+                      <button
+                        onClick={() => setIsGhostOn(!isGhostOn)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all font-sans font-medium text-xs cursor-pointer ${
+                          isGhostOn
+                            ? "bg-slate-800 text-emerald-400 shadow"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${isGhostOn ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" : "bg-slate-500"}`} />
+                        Ghost: {isGhostOn ? "ON" : "OFF"}
+                      </button>
                       <button
                         onClick={() => {
                           setIsShuffleOn(!isShuffleOn);
