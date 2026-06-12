@@ -14,7 +14,15 @@ export const persistentStorage = {
       if (win.storage) {
         if (typeof win.storage.get === 'function') {
           const res = await win.storage.get(key);
-          rawData = typeof res === 'string' ? res : (res ? JSON.stringify(res) : null);
+          if (res !== null && res !== undefined) {
+            if (typeof res === 'object' && 'value' in res) {
+              rawData = typeof res.value === 'string' ? res.value : (res.value ? JSON.stringify(res.value) : null);
+            } else if (typeof res === 'string') {
+              rawData = res;
+            } else {
+              rawData = JSON.stringify(res);
+            }
+          }
         } else if (typeof win.storage.getItem === 'function') {
           rawData = await win.storage.getItem(key);
         }
@@ -64,13 +72,27 @@ export const persistentStorage = {
       if (win.storage) {
         if (typeof win.storage.get === 'function') {
           const res = await win.storage.get(key);
-          return typeof res === 'string' ? res : (res ? String(res) : "");
+          console.log(`[Notes Load] window.storage.get('${key}') raw response:`, res);
+          if (res !== null && res !== undefined) {
+            if (typeof res === 'object' && 'value' in res) {
+              console.log(`[Notes Load] Found 'value' property in object. Value is:`, res.value);
+              return typeof res.value === 'string' ? res.value : (res.value !== null && res.value !== undefined ? String(res.value) : "");
+            }
+            if (typeof res === 'string') {
+              return res;
+            }
+            return String(res);
+          }
+          return "";
         } else if (typeof win.storage.getItem === 'function') {
           const res = await win.storage.getItem(key);
+          console.log(`[Notes Load] window.storage.getItem('${key}') response:`, res);
           return res || "";
         }
       }
-      return localStorage.getItem(key) || "";
+      const localRes = localStorage.getItem(key);
+      console.log(`[Notes Load] localStorage.getItem('${key}') response:`, localRes);
+      return localRes || "";
     } catch (e) {
       console.warn("Could not load note from storage", e);
       return "";
@@ -80,16 +102,20 @@ export const persistentStorage = {
   async saveNote(key: string, value: string): Promise<void> {
     try {
       const win = window as any;
+      console.log(`[Notes Save] Attempting to save key: '${key}', value:`, value);
       if (win.storage) {
         if (typeof win.storage.set === 'function') {
           await win.storage.set(key, value);
+          console.log(`[Notes Save] window.storage.set('${key}') completed successfully.`);
           return;
         } else if (typeof win.storage.setItem === 'function') {
           await win.storage.setItem(key, value);
+          console.log(`[Notes Save] window.storage.setItem('${key}') completed successfully.`);
           return;
         }
       }
       localStorage.setItem(key, value);
+      console.log(`[Notes Save] localStorage.setItem('${key}') completed successfully.`);
     } catch (e) {
       console.error("Failed to save note to storage", e);
       localStorage.setItem(key, value);
